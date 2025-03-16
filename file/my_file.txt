@@ -1,0 +1,2 @@
+python script.py send file/my_file.txt
+python script.py receive 7-exodus-clamshell
