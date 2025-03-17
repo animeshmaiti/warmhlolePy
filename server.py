@@ -44,18 +44,29 @@ def receive():
     if not code:
         return jsonify({"error": "Code required"}), 400
 
-    # Run Magic Wormhole as a separate process
-    result = subprocess.run(["python", "script.py", "receive", code], capture_output=True, text=True)
+    # Ensure downloads directory exists
+    download_dir = "downloads"
+    os.makedirs(download_dir, exist_ok=True)
 
-    # Extract filename from the logs
+    # Run Magic Wormhole as a separate process
+    result = subprocess.run(
+        ["python", "script.py", "receive", code],
+        capture_output=True, text=True
+    )
+
+    # Extract filename from logs
     file_name = None
     for line in result.stdout.split("\n"):
         if "Receiving file:" in line:
             file_name = line.split(": ")[1].strip()
+
     print(file_name)
-    
-    if file_name and os.path.exists(file_name):
-        return send_file(file_name, as_attachment=True)
+
+    # Check if the file was received successfully in the downloads directory
+    if file_name:
+        file_path = os.path.join(download_dir, file_name)
+        if os.path.exists(file_path):
+            return send_file(file_path, as_attachment=True)
 
     return jsonify({"error": "Failed to receive file"}), 500
 
