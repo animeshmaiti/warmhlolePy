@@ -14,7 +14,7 @@ async def send_file(reactor, file_path):
     w.allocate_code()
 
     code = await w.get_code()
-    print(f"code: {code}")
+    print(f"code: {code}",flush=True)
 
     await w.get_versions()
 
@@ -47,7 +47,7 @@ async def receive_file(reactor, code):
     file_name, file_size = msg.decode("utf-8").split(",")
     file_size = int(file_size)
 
-    print(f"Receiving file: {file_name} ({file_size} bytes)")
+    print(f"Receiving file: {file_name}",flush=True)
 
     # Receive file data
     file_data = await w.get_message()

@@ -1,99 +1,64 @@
 from flask import Flask, request, jsonify, send_file
+import subprocess
 import os
-import threading
-import wormhole
-from wormhole.cli import public_relay
-from twisted.internet.defer import ensureDeferred
-from twisted.internet.task import react
+from flask_cors import CORS
 
 app = Flask(__name__)
-
+CORS(app)
 UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Ensure upload folder exists
-
-async def send_file_async(reactor, file_path, result):
-    """Send a file using Magic Wormhole and store the generated code."""
-    appid = "lothar.com/example"
-    relay_url = public_relay.RENDEZVOUS_RELAY
-
-    w = wormhole.create(appid, relay_url, reactor)
-    w.allocate_code()
-    code = await w.get_code()
-    result["code"] = code  # Store code in result dict
-
-    await w.get_versions()
-
-    # Send file metadata
-    file_name = os.path.basename(file_path)
-    file_size = os.path.getsize(file_path)
-    w.send_message(f"{file_name},{file_size}".encode("utf-8"))
-
-    # Send file data
-    with open(file_path, "rb") as f:
-        file_data = f.read()
-        w.send_message(file_data)
-
-    await w.close()
-
-async def receive_file_async(reactor, code, result):
-    """Receive a file using Magic Wormhole and store its path."""
-    appid = "lothar.com/example"
-    relay_url = public_relay.RENDEZVOUS_RELAY
-
-    w = wormhole.create(appid, relay_url, reactor)
-    w.set_code(code)
-
-    # Get file metadata
-    msg = await w.get_message()
-    file_name, file_size = msg.decode("utf-8").split(",")
-    file_size = int(file_size)
-
-    # Receive file data
-    file_data = await w.get_message()
-    save_path = os.path.join(UPLOAD_FOLDER, file_name)
-
-    with open(save_path, "wb") as f:
-        f.write(file_data)
-
-    result["file_path"] = save_path  # Store received file path
-    await w.close()
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 @app.route("/send", methods=["POST"])
-def send_file_api():
-    """Flask endpoint to send a file using Magic Wormhole."""
-    if "file" not in request.files:
-        return jsonify({"error": "No file provided"}), 400
-
+def send():
     file = request.files["file"]
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(file_path)
 
-    result = {}
-    thread = threading.Thread(target=react, args=(lambda reactor: ensureDeferred(send_file_async(reactor, file_path, result)),))
-    thread.start()
-    thread.join()  # Wait for the thread to finish
+    # Run Magic Wormhole as a separate process
+    process = subprocess.Popen(
+        ["python", "script.py", "send", file_path], 
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
 
-    return jsonify({"code": result.get("code", "Error generating code")})
+    # Extract the code
+    code_line = None
+    for _ in range(10):  # Read first 10 lines, assuming code appears early
+        output = process.stdout.readline().strip()
+        if output.startswith("code: "):
+            code_line = output.split("code: ")[1]
+            break
+
+    if code_line:
+        print(f"Extracted Code: {code_line}")
+        return jsonify({"code": code_line})
+    else:
+        print("No code found.")
+        return jsonify({"error": "Failed to send file"}), 500
+
 
 @app.route("/receive", methods=["POST"])
-def receive_file_api():
-    """Flask endpoint to receive a file using Magic Wormhole."""
+def receive():
     data = request.get_json()
     code = data.get("code")
 
     if not code:
-        return jsonify({"error": "No code provided"}), 400
+        return jsonify({"error": "Code required"}), 400
 
-    result = {}
-    thread = threading.Thread(target=react, args=(lambda reactor: ensureDeferred(receive_file_async(reactor, code, result)),))
-    thread.start()
-    thread.join()  # Wait for the thread to finish
+    # Run Magic Wormhole as a separate process
+    result = subprocess.run(["python", "script.py", "receive", code], capture_output=True, text=True)
 
-    file_path = result.get("file_path")
-    if file_path:
-        return send_file(file_path, as_attachment=True)
-    else:
-        return jsonify({"error": "Failed to receive file"}), 500
+    # Extract filename from the logs
+    file_name = None
+    for line in result.stdout.split("\n"):
+        if "Receiving file:" in line:
+            file_name = line.split(": ")[1].strip()
+    print(file_name)
+    
+    if file_name and os.path.exists(file_name):
+        return send_file(file_name, as_attachment=True)
+
+    return jsonify({"error": "Failed to receive file"}), 500
+
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=True)
