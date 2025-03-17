@@ -47,16 +47,23 @@ async def receive_file(reactor, code):
     file_name, file_size = msg.decode("utf-8").split(",")
     file_size = int(file_size)
 
-    print(f"Receiving file: {file_name}",flush=True)
+    print(f"Receiving file: {file_name}", flush=True)
+
+    # Ensure downloads directory exists
+    download_dir = "downloads"
+    os.makedirs(download_dir, exist_ok=True)
+
+    # Full file path
+    file_path = os.path.join(download_dir, file_name)
 
     # Receive file data
     file_data = await w.get_message()
 
-    # Save file
-    with open(file_name, "wb") as f:
+    # Save file in downloads folder
+    with open(file_path, "wb") as f:
         f.write(file_data)
 
-    print(f"File received: {file_name} ({len(file_data)} bytes)")
+    print(f"File received: {file_path} ({len(file_data)} bytes)")
     await w.close()
 
 if __name__ == "__main__":
