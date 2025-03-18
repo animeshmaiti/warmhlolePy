@@ -8,6 +8,10 @@ CORS(app)
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+@app.route("/test", methods=["POST","GET"])
+def test():
+    return jsonify({"message": "Test successful!"})
+
 @app.route("/send", methods=["POST"])
 def send():
     file = request.files["file"]
@@ -72,4 +76,5 @@ def receive():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=False)
